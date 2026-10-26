@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto Scaling · {{ info.instancia }}</title>
+<style>
+  :root {
+    --zona: {{ info.color }};
+    --fondo: #f1f4f8;
+    --tarjeta: #ffffff;
+    --texto: #0f172a;
+    --suave: #64748b;
+    --borde: #e2e8f0;
+    --aws: #232f3e;
+    --naranja: #ff9900;
+    --rojo: #dc2626;
+    --verde: #16a34a;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+    line-height: 1.45;
+  }
+  header {
+    background: var(--aws);
+    color: #fff;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.15rem; margin: 0; font-weight: 650; letter-spacing: .01em; }
+  header h1 span { color: var(--naranja); }
+  header .reloj { font-family: var(--mono); font-size: .9rem; opacity: .8; }
+  main {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 24px 16px 40px;
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 20px;
+  }
+  main > * { min-width: 0; }  /* que la tabla no ensanche la página en el móvil */
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .tarjeta {
+    background: var(--tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  }
+  .ancha { grid-column: 1 / -1; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--suave); margin: 0 0 12px; }
+
+  /* Instancia que acaba de responder */
+  .actual { border-top: 10px solid var(--zona); transition: border-color .4s; }
+  .actual.destello { animation: destello .6s ease-out; }
+  @keyframes destello { from { box-shadow: 0 0 0 6px color-mix(in srgb, var(--zona) 35%, transparent); } to { box-shadow: 0 0 0 0 transparent; } }
+  .id-instancia { font-family: var(--mono); font-size: clamp(1.5rem, 4vw, 2.3rem); font-weight: 700; margin: 0 0 10px; word-break: break-all; }
+  .pastilla {
+    display: inline-block;
+    background: var(--zona);
+    color: #fff;
+    font-weight: 700;
+    font-family: var(--mono);
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 1.05rem;
+    transition: background .4s;
+  }
+  .datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px 20px; margin: 20px 0 6px; }
+  .dato small { display: block; color: var(--suave); font-size: .78rem; }
+  .dato b { font-family: var(--mono); font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+  .dato.larga { grid-column: 1 / -1; }
+  .medidor { margin-top: 18px; }
+  .medidor .cabecera { display: flex; justify-content: space-between; align-items: baseline; }
+  .medidor .valor { font-family: var(--mono); font-size: 1.6rem; font-weight: 700; }
+  .barra { height: 14px; background: #e8edf3; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+  .barra div { height: 100%; width: 0; border-radius: 999px; transition: width .5s, background .5s; }
+  .estado-estres { margin-top: 14px; font-weight: 600; }
+
+  /* Controles */
+  .controles p { color: var(--suave); font-size: .92rem; margin: 0 0 14px; }
+  .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  select, button { font: inherit; border-radius: 10px; }
+  select { padding: 10px 12px; border: 1px solid var(--borde); background: #fff; }
+  button { border: 0; padding: 11px 18px; font-weight: 650; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: wait; }
+  .btn-estres { background: var(--rojo); color: #fff; }
+  .btn-parar { background: #e0f2fe; color: #075985; }
+  .interruptor { display: flex; align-items: center; gap: 8px; font-size: .95rem; user-select: none; }
+  .interruptor input { width: 18px; height: 18px; accent-color: var(--aws); }
+  .pista { font-size: .85rem; color: var(--suave); border-left: 3px solid var(--naranja); padding: 6px 10px; background: #fff8eb; border-radius: 0 8px 8px 0; }
+
+  /* Tabla de instancias */
+  .resumen { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 12px; color: var(--suave); }
+  .resumen b { color: var(--texto); font-family: var(--mono); font-size: 1.1rem; }
+  .tabla { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th { text-align: left; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--suave); padding: 8px 10px; border-bottom: 2px solid var(--borde); white-space: nowrap; }
+  td { padding: 10px; border-bottom: 1px solid var(--borde); white-space: nowrap; }
+  td.mono { font-family: var(--mono); }
+  tr.callada td { opacity: .4; }
+  tr.ultima td:first-child { box-shadow: inset 4px 0 0 var(--naranja); }
+  .punto { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .mini { display: inline-block; width: 60px; height: 8px; background: #e8edf3; border-radius: 999px; overflow: hidden; vertical-align: middle; margin-left: 6px; }
+  .mini div { height: 100%; }
+  .vacia { color: var(--suave); text-align: center; padding: 18px; }
+
+  /* Avisos */
+  .error { display: none; grid-column: 1 / -1; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 12px; padding: 14px 18px; font-weight: 600; }
+  .error.visible { display: block; }
+  .aviso {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 30px);
+    background: var(--aws); color: #fff; padding: 12px 18px; border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .25); opacity: 0; pointer-events: none;
+    transition: opacity .25s, transform .25s; max-width: calc(100% - 32px);
+  }
+  .aviso.visible { opacity: 1; transform: translate(-50%, 0); }
+  footer { text-align: center; color: var(--suave); font-size: .82rem; padding: 0 16px 28px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Demo de <span>Auto Scaling</span> · ¿qué instancia me responde?</h1>
+  <div class="reloj">Hora del servidor: <span id="hora">{{ info.hora }}</span></div>
+</header>
+
+<main>
+  <div class="error" id="error"></div>
+
+  <section class="tarjeta actual" id="tarjeta-actual">
+    <h2>Te acaba de responder</h2>
+    <p class="id-instancia" id="instancia">{{ info.instancia }}</p>
+    <span class="pastilla" id="zona">{{ info.zona }}</span>
+    <div class="datos">
+      <div class="dato"><small>IP privada</small><b id="ip">{{ info.ip }}</b></div>
+      <div class="dato"><small>Tipo de instancia</small><b id="tipo">{{ info.tipo }}</b></div>
+      <div class="dato"><small>Encendida hace</small><b id="encendida">–</b></div>
+      <div class="dato larga"><small>AMI con la que se creó</small><b id="ami">{{ info.ami }}</b></div>
+    </div>
+    <div class="medidor">
+      <div class="cabecera"><small>Uso de CPU de esta instancia</small><span class="valor" id="cpu">–</span></div>
+      <div class="barra"><div id="barra-cpu"></div></div>
+    </div>
+    <div class="estado-estres" id="estado-estres">–</div>
+  </section>
+
+  <section class="tarjeta controles">
+    <h2>Provocar carga</h2>
+    <p>El estrés pone la CPU de <strong>una</strong> instancia al 100&nbsp;%: la que elija el balanceador para tu petición.</p>
+    <div class="fila">
+      <select id="minutos" aria-label="Duración del estrés">
+        <option value="5">5 minutos</option>
+        <option value="10" selected>10 minutos</option>
+        <option value="{{ minutos_max }}">{{ minutos_max }} minutos</option>
+      </select>
+      <button class="btn-estres" id="btn-estres">🔥 Estresar CPU</button>
+      <button class="btn-parar" id="btn-parar">🧊 Parar estrés</button>
+    </div>
+    <div class="fila">
+      <label class="interruptor"><input type="checkbox" id="auto" checked> Consultar al balanceador cada 2 segundos</label>
+    </div>
+    <p class="pista">Pulsa <strong>Estresar</strong> varias veces, hasta que todas las instancias de la tabla muestren 🔥. Cada pulsación cae en la instancia que toque.</p>
+  </section>
+
+  <section class="tarjeta ancha">
+    <h2>Instancias que te han respondido desde que abriste la página</h2>
+    <div class="resumen">
+      <span>Distintas: <b id="total">0</b></span>
+      <span>Respondiendo ahora: <b id="activas">0</b></span>
+      <span>Peticiones: <b id="peticiones">0</b></span>
+    </div>
+    <div class="tabla">
+      <table>
+        <thead>
+          <tr><th>Instancia</th><th>Zona</th><th>IP privada</th><th>Respuestas</th><th>CPU</th><th>Estado</th><th>Última respuesta</th></tr>
+        </thead>
+        <tbody id="filas"><tr><td colspan="7" class="vacia">Esperando respuestas…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer>ARCN · UD3 Plantillas y grupos de autoescalado · IES Albarregas</footer>
+<div class="aviso" id="aviso"></div>
+
+<script>
+const INICIAL = {{ info | tojson }};
+const CALLADA_MS = 30000;       // sin responder en 30 s = probablemente ya no existe
+const instancias = new Map();   // instancia -> datos y contador de respuestas
+let ultimaId = null;
+let peticiones = 0;
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const mmss = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const colorCpu = (p) => p == null ? "#94a3b8" : p < 50 ? "#16a34a" : p < 80 ? "#f59e0b" : "#dc2626";
+
+function duracion(s) {
+  if (s == null) return "–";
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min " + (s % 60) + " s";
+  return Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min";
+}
+
+// Tiempo de estrés que le queda, descontando lo que ha pasado desde que respondió
+function restante(d) {
+  if (!d.estres) return 0;
+  return d.estres_restante_s - (Date.now() - d.vista) / 1000;
+}
+
+function registrar(d) {
+  const previa = instancias.get(d.instancia) || { respuestas: 0, primera: Date.now() };
+  instancias.set(d.instancia, { ...previa, ...d, respuestas: previa.respuestas + 1, vista: Date.now() });
+  ultimaId = d.instancia;
+  peticiones++;
+}
+
+function pintarActual(d) {
+  const tarjeta = $("tarjeta-actual");
+  document.documentElement.style.setProperty("--zona", d.color);
+  if ($("instancia").textContent !== d.instancia) {
+    tarjeta.classList.remove("destello"); void tarjeta.offsetWidth; tarjeta.classList.add("destello");
+  }
+  $("instancia").textContent = d.instancia;
+  $("zona").textContent = d.zona;
+  $("ip").textContent = d.ip;
+  $("tipo").textContent = d.tipo;
+  $("ami").textContent = d.ami;
+  $("encendida").textContent = duracion(d.encendida_s);
+  $("hora").textContent = d.hora;
+  $("cpu").textContent = d.cpu == null ? "n/d" : d.cpu.toFixed(0) + " %";
+  $("barra-cpu").style.width = (d.cpu || 0) + "%";
+  $("barra-cpu").style.background = colorCpu(d.cpu);
+  pintarEstres();
+}
+
+function pintarEstres() {
+  const d = instancias.get(ultimaId);
+  if (!d) return;
+  const r = restante(d);
+  $("estado-estres").textContent = r > 0 ? "🔥 Estresada · quedan " + mmss(r) : "🧊 En reposo";
+}
+
+function pintarTabla() {
+  const ahora = Date.now();
+  const lista = [...instancias.values()].sort((a, b) => a.primera - b.primera);
+  let activas = 0;
+  const filas = lista.map((d) => {
+    const callada = ahora - d.vista > CALLADA_MS;
+    if (!callada) activas++;
+    const r = restante(d);
+    const estado = callada ? "💤 sin respuesta" : r > 0 ? "🔥 " + mmss(r) : "🧊 reposo";
+    const cpu = d.cpu == null ? "n/d" : d.cpu.toFixed(0) + " %";
+    const clases = [callada ? "callada" : "", d.instancia === ultimaId ? "ultima" : ""].join(" ");
+    return `<tr class="${clases}">
+      <td class="mono">${esc(d.instancia)}</td>
+      <td><span class="punto" style="background:${esc(d.color)}"></span>${esc(d.zona)}</td>
+      <td class="mono">${esc(d.ip)}</td>
+      <td class="mono">${d.respuestas}</td>
+      <td class="mono">${cpu}<span class="mini"><div style="width:${d.cpu || 0}%;background:${colorCpu(d.cpu)}"></div></span></td>
+      <td>${estado}</td>
+      <td>hace ${Math.round((ahora - d.vista) / 1000)} s</td>
+    </tr>`;
+  });
+  $("filas").innerHTML = filas.join("") || '<tr><td colspan="7" class="vacia">Esperando respuestas…</td></tr>';
+  $("total").textContent = lista.length;
+  $("activas").textContent = activas;
+  $("peticiones").textContent = peticiones;
+}
+
+function mostrarError(texto) { $("error").textContent = "⚠️ " + texto; $("error").classList.add("visible"); }
+function ocultarError() { $("error").classList.remove("visible"); }
+
+function explicar(estado) {
+  if (estado === 502) return "HTTP 502: el balanceador no ha obtenido una respuesta válida de la instancia.";
+  if (estado === 503) return "HTTP 503: el balanceador no tiene ninguna instancia sana a la que enviar la petición. Revisa el grupo de destino.";
+  if (estado === 504) return "HTTP 504: la instancia ha tardado demasiado en responder.";
+  return "HTTP " + estado + ": respuesta inesperada.";
+}
+
+let avisoTimer;
+function avisar(texto) {
+  $("aviso").textContent = texto;
+  $("aviso").classList.add("visible");
+  clearTimeout(avisoTimer);
+  avisoTimer = setTimeout(() => $("aviso").classList.remove("visible"), 4500);
+}
+
+function procesar(d) {
+  ocultarError();
+  registrar(d);
+  pintarActual(d);
+  pintarTabla();
+}
+
+async function consultar() {
+  try {
+    const r = await fetch("/api/info", { cache: "no-store" });
+    if (!r.ok) throw { estado: r.status };
+    procesar(await r.json());
+  } catch (e) {
+    mostrarError(e.estado ? explicar(e.estado) : "No se puede conectar con la web. ¿Está activo el balanceador?");
+  }
+}
+
+async function accion(url, cuerpo, boton) {
+  boton.disabled = true;
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo || {}),
+      cache: "no-store",
+    });
+    if (!r.ok) throw { estado: r.status };
+    const d = await r.json();
+    procesar(d);
+    avisar(d.mensaje + " · " + d.instancia + " (" + d.zona + ")");
+  } catch (e) {
+    mostrarError(e.estado ? explicar(e.estado) : "No se puede conectar con la web.");
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+$("btn-estres").addEventListener("click", (ev) => accion("/api/estres", { minutos: Number($("minutos").value) }, ev.currentTarget));
+$("btn-parar").addEventListener("click", (ev) => accion("/api/estres/parar", {}, ev.currentTarget));
+
+// Arranque: la propia carga de la página ya es la primera respuesta
+INICIAL.vista = Date.now();
+procesar(INICIAL);
+setInterval(() => { if ($("auto").checked) consultar(); }, 2000);
+setInterval(() => { pintarTabla(); pintarEstres(); }, 1000);
+</script>
+</body>
+</html>

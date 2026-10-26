@@ -1,0 +1,23 @@
+[Unit]
+Description=Web de demostración de Auto Scaling (ARCN - UD3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=webapp
+Group=webapp
+WorkingDirectory=/opt/web-app-auto-scaling
+ExecStart=/opt/web-app-auto-scaling/venv/bin/gunicorn --workers 2 --threads 4 --bind 0.0.0.0:80 app:app
+# Carpeta /run/web-app, solo para la web, donde guarda el estado del estrés
+RuntimeDirectory=web-app
+Environment=WEB_APP_DIR_ESTADO=/run/web-app
+# Permite usar el puerto 80 sin ejecutar la web como root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+# Si la web se cae, systemd la vuelve a levantar
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
